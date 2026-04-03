@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BugUs — Debug or Die</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050a0f;
+  --panel: rgba(0,255,180,0.04);
+  --border: rgba(0,255,180,0.15);
+  --p1: #00ffb4;
+  --p2: #ff4d6d;
+  --accent: #ffe600;
+  --dead: #444;
+  --text: #e0fff5;
+  --shadow1: 0 0 20px rgba(0,255,180,0.4);
+  --shadow2: 0 0 20px rgba(255,77,109,0.4);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background:
+    linear-gradient(rgba(0,255,180,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,255,180,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: gridMove 20s linear infinite;
+  pointer-events:none;
+}
+@keyframes gridMove {
+  0%{background-position:0 0;}
+  100%{background-position:40px 40px;}
+}
+body::after {
+  content:'';
+  position:fixed;
+  inset:0;
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(0,255,180,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 100%, rgba(255,77,109,0.08) 0%, transparent 50%);
+  pointer-events:none;
+}
+.screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  z-index: 10;
+}
+.screen.active { display: flex; }
+
+/* ===== TITLE ===== */
+#titleScreen { gap: 0; text-align: center; }
+.title-logo {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(3rem, 10vw, 7rem);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--p1), #00c8ff, var(--p1));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite, glowPulse 2s ease-in-out infinite;
+  margin-bottom: 0.2em;
+}
+@keyframes shimmer { 0%{background-position:0% center;} 100%{background-position:200% center;} }
+@keyframes glowPulse {
+  0%,100%{filter:drop-shadow(0 0 20px rgba(0,255,180,0.6));}
+  50%{filter:drop-shadow(0 0 40px rgba(0,255,180,1));}
+}
+.title-sub {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.8rem, 2.5vw, 1.2rem);
+  color: var(--p2);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin-bottom: 2rem;
+  animation: blink 1.5s step-end infinite;
+}
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+.controls-preview {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.player-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1rem 1.5rem;
+  backdrop-filter: blur(10px);
+  min-width: 170px;
+}
+.player-card.p1 { border-color: var(--p1); box-shadow: var(--shadow1); }
+.player-card.p2 { border-color: var(--p2); box-shadow: var(--shadow2); }
+.player-card h3 { font-family: 'Orbitron', sans-serif; font-size: 0.7rem; letter-spacing: 0.2em; margin-bottom: 0.7rem; }
+.p1 h3 { color: var(--p1); }
+.p2 h3 { color: var(--p2); }
+.key-row { display: flex; gap: 0.4rem; align-items: center; margin: 0.25rem 0; font-size: 0.8rem; }
+.key {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.7rem;
+  font-family: 'Orbitron', sans-serif;
+}
+.task-key-info {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+.start-btn {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  padding: 1rem 3rem;
+  background: transparent;
+  border: 2px solid var(--p1);
+  color: var(--p1);
+  border-radius: 50px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s;
+  text-transform: uppercase;
+}
+.start-btn::before {
+  content:'';
+  position:absolute;
+  inset:0;
+  background: var(--p1);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s;
+  z-index:-1;
+}
+.start-btn:hover { color: var(--bg); box-shadow: var(--shadow1); }
+.start-btn:hover::before { transform: scaleX(1); }
+
+/* ===== GAME SCREEN ===== */
+#gameScreen { padding: 0; }
+.game-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+}
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.6rem 1.5rem;
+  background: rgba(5,10,15,0.9);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+  z-index: 20;
+  flex-shrink: 0;
+}
+.hud-player { display: flex; align-items: center; gap: 0.8rem; }
+.hud-name { font-family: 'Orbitron', sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.15em; }
+.hud-name.p1 { color: var(--p1); }
+.hud-name.p2 { color: var(--p2); }
+.health-bar-wrap {
+  width: 120px; height: 8px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.health-bar { height: 100%; border-radius: 4px; transition: width 0.2s ease; }
+.health-bar.p1 { background: linear-gradient(90deg, var(--p1), #00c8ff); }
+.health-bar.p2 { background: linear-gradient(90deg, var(--p2), #ff8fa0); }
+.hp-text { font-size: 0.7rem; opacity: 0.7; min-width: 2.5rem; }
+.hud-center { text-align: center; }
+.round-label { font-family: 'Orbitron', sans-serif; font-size: 0.6rem; letter-spacing: 0.3em; color: rgba(255,255,255,0.4); text-transform: uppercase; }
+.score-display { font-family: 'Orbitron', sans-serif; font-size: 1.3rem; font-weight: 900; color: var(--accent); letter-spacing: 0.1em; }
+.canvas-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+#gameCanvas { display: block; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+.debug-log {
+  width: 100%;
+  padding: 0.4rem 1.5rem;
+  background: rgba(5,10,15,0.95);
+  border-top: 1px solid var(--border);
+  font-size: 0.7rem;
+  color: var(--p1);
+  font-family: 'Share Tech Mono', monospace;
+  height: 28px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* ===== TASK OVERLAY ===== */
+#taskOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(5,10,15,0.92);
+  z-index: 80;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0;
+  backdrop-filter: blur(4px);
+  animation: taskFadeIn 0.3s ease;
+}
+#taskOverlay.active { display: flex; }
+@keyframes taskFadeIn {
+  from { opacity:0; transform: scale(0.95); }
+  to { opacity:1; transform: scale(1); }
+}
+.task-header {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.4em;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  animation: blink 1s step-end infinite;
+}
+.task-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(1.2rem, 3vw, 1.8rem);
+  font-weight: 900;
+  color: var(--p1);
+  margin-bottom: 0.4rem;
+  text-align: center;
+  text-shadow: 0 0 30px rgba(0,255,180,0.5);
+}
+.task-timer-bar-wrap {
+  width: min(600px, 90vw);
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.task-timer-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--p1), var(--accent));
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+.task-box {
+  background: rgba(0,255,180,0.04);
+  border: 1px solid rgba(0,255,180,0.2);
+  border-radius: 16px;
+  width: min(680px, 92vw);
+  padding: 1.2rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+.task-box::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--p1), var(--accent), var(--p1), transparent);
+  animation: scanLine 2s linear infinite;
+}
+@keyframes scanLine {
+  0%{transform:translateX(-100%);} 100%{transform:translateX(100%);}
+}
+.task-bug-type {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.3em;
+  color: var(--p2);
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.task-bug-type::before { content: '⚠'; font-size: 0.8rem; }
+.task-code {
+  background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(0,255,180,0.1);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.72rem, 1.5vw, 0.88rem);
+  line-height: 1.7;
+  color: #c8f0e8;
+  margin-bottom: 0.8rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+.code-line-bug { color: var(--p2); background: rgba(255,77,109,0.12); border-radius: 3px; padding: 0 2px; }
+.code-kw { color: #79c0ff; }
+.code-fn { color: #d2a8ff; }
+.code-str { color: #a5d6ff; }
+.code-num { color: var(--accent); }
+.code-cmt { color: #5a7a6e; font-style: italic; }
+.task-question {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.85);
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+.task-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.task-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  cursor: default;
+  transition: all 0.2s;
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+.task-opt.highlight {
+  border-color: rgba(0,255,180,0.4);
+  background: rgba(0,255,180,0.08);
+}
+.task-opt.correct-anim {
+  border-color: var(--p1);
+  background: rgba(0,255,180,0.2);
+  animation: correctFlash 0.4s ease;
+}
+.task-opt.wrong-anim {
+  border-color: var(--p2);
+  background: rgba(255,77,109,0.15);
+  animation: wrongShake 0.3s ease;
+}
+@keyframes correctFlash { 0%,100%{transform:scale(1);} 50%{transform:scale(1.03);} }
+@keyframes wrongShake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-4px);} 75%{transform:translateX(4px);} }
+.opt-key {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.opt-key.p1-key { border-color: var(--p1); color: var(--p1); background: rgba(0,255,180,0.08); }
+.opt-key.p2-key { border-color: var(--p2); color: var(--p2); background: rgba(255,77,109,0.08); }
+.task-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.8rem;
+  font-size: 0.68rem;
+  opacity: 0.5;
+}
+.task-reward-hint {
+  display: flex;
+  gap: 1.2rem;
+  font-size: 0.72rem;
+  color: var(--accent);
+  margin-top: 0.6rem;
+  justify-content: center;
+}
+.task-reward-hint span { opacity: 0.8; }
+
+/* Task Result Flash */
+#taskResult {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(2rem, 6vw, 4rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+  animation: resultFade 0.8s ease forwards;
+}
+#taskResult.active { display: flex; }
+@keyframes resultFade {
+  0%{opacity:0; transform:scale(0.7);}
+  30%{opacity:1; transform:scale(1.05);}
+  70%{opacity:1; transform:scale(1);}
+  100%{opacity:0; transform:scale(0.9);}
+}
+#taskResult.win { color: var(--p1); text-shadow: 0 0 40px var(--p1); }
+#taskResult.lose { color: var(--p2); text-shadow: 0 0 40px var(--p2); }
+#taskResult.timeout { color: var(--accent); text-shadow: 0 0 40px var(--accent); }
+
+/* WIN SCREEN */
+#winScreen { gap: 1.5rem; text-align: center; }
+.win-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(2rem, 8vw, 5rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  animation: winPulse 1s ease-in-out infinite;
+}
+@keyframes winPulse { 0%,100%{transform:scale(1);} 50%{transform:scale(1.05);} }
+.win-title.p1win { color: var(--p1); text-shadow: 0 0 40px var(--p1); }
+.win-title.p2win { color: var(--p2); text-shadow: 0 0 40px var(--p2); }
+.win-sub { font-size: 1rem; opacity: 0.6; letter-spacing: 0.2em; }
+.win-btns { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+.btn-outline {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  padding: 0.8rem 2rem;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: var(--text);
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.btn-outline:hover { border-color: var(--p1); color: var(--p1); box-shadow: var(--shadow1); }
+
+/* TOUCH CONTROLS */
+.touch-ui {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 180px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 1rem 1rem;
+  z-index: 50;
+  pointer-events: none;
+}
+.touch-side { display: flex; flex-direction: column; align-items: center; gap: 0; pointer-events: all; }
+.dpad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); gap: 3px; }
+.dpad-btn {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  cursor: pointer;
+  user-select: none; -webkit-user-select: none;
+  touch-action: none;
+  transition: background 0.1s;
+  color: rgba(255,255,255,0.6);
+}
+.dpad-btn:active, .dpad-btn.pressed { background: rgba(255,255,255,0.2); }
+.dpad-blank { background: transparent; border: none; }
+.atk-btn {
+  width: 64px; height: 64px;
+  border-radius: 50%; border: 2px solid;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none; -webkit-user-select: none;
+  touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 6px;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.atk-btn:active, .atk-btn.pressed { transform: scale(0.92); }
+.atk-p1 { background: rgba(0,255,180,0.15); border-color: var(--p1); color: var(--p1); box-shadow: 0 0 12px rgba(0,255,180,0.3); }
+.atk-p1.pressed { box-shadow: 0 0 24px rgba(0,255,180,0.7); }
+.atk-p2 { background: rgba(255,77,109,0.15); border-color: var(--p2); color: var(--p2); box-shadow: 0 0 12px rgba(255,77,109,0.3); }
+.atk-p2.pressed { box-shadow: 0 0 24px rgba(255,77,109,0.7); }
+
+.scanlines {
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+  pointer-events: none; z-index: 100;
+}
+.particle { position: fixed; width: 2px; height: 2px; background: var(--p1); border-radius: 50%; pointer-events: none; z-index: 5; animation: floatUp linear infinite; opacity: 0; }
+@keyframes floatUp {
+  0%{transform:translateY(100vh) translateX(0);opacity:0;}
+  10%{opacity:0.6;} 90%{opacity:0.2;}
+  100%{transform:translateY(-20px) translateX(30px);opacity:0;}
+}
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+<div id="particles"></div>
+
+<!-- TITLE SCREEN -->
+<div class="screen active" id="titleScreen">
+  <div class="title-logo">BugUs</div>
+  <div class="title-sub">— Debug or Die —</div>
+  <div class="controls-preview">
+    <div class="player-card p1">
+      <h3>⬡ DEBUGGER_01</h3>
+      <div class="key-row"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> Move</div>
+      <div class="key-row"><span class="key">F</span> Attack</div>
+      <div class="task-key-info">Task answers:<br><span class="key">1</span><span class="key">2</span><span class="key">3</span><span class="key">4</span> → Options A B C D</div>
+    </div>
+    <div class="player-card p2">
+      <h3>⬡ DEBUGGER_02</h3>
+      <div class="key-row"><span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span> Move</div>
+      <div class="key-row"><span class="key">L</span> Attack</div>
+      <div class="task-key-info">Task answers:<br><span class="key">7</span><span class="key">8</span><span class="key">9</span><span class="key">0</span> → Options A B C D</div>
+    </div>
+  </div>
+  <button class="start-btn" onclick="startGame()">INITIALIZE GAME</button>
+</div>
+
+<!-- GAME SCREEN -->
+<div class="screen" id="gameScreen">
+  <div class="game-wrapper">
+    <div class="hud">
+      <div class="hud-player">
+        <span class="hud-name p1">DEBUGGER_01</span>
+        <div class="health-bar-wrap"><div class="health-bar p1" id="hp1bar" style="width:100%"></div></div>
+        <span class="hp-text" id="hp1text">100</span>
+      </div>
+      <div class="hud-center">
+        <div class="round-label">SCORE</div>
+        <div class="score-display" id="scoreDisplay">0 — 0</div>
+      </div>
+      <div class="hud-player">
+        <span class="hp-text" id="hp2text">100</span>
+        <div class="health-bar-wrap"><div class="health-bar p2" id="hp2bar" style="width:100%"></div></div>
+        <span class="hud-name p2">DEBUGGER_02</span>
+      </div>
+    </div>
+    <div class="canvas-container">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+    <div class="debug-log" id="debugLog">&gt; SYSTEM INITIALIZED... RUNTIME ACTIVE...</div>
+  </div>
+  <!-- Touch Controls -->
+  <div class="touch-ui" id="touchUI">
+    <div class="touch-side">
+      <div class="dpad">
+        <div class="dpad-blank"></div><div class="dpad-btn" id="p1up">▲</div><div class="dpad-blank"></div>
+        <div class="dpad-btn" id="p1left">◄</div><div class="dpad-blank"></div><div class="dpad-btn" id="p1right">►</div>
+        <div class="dpad-blank"></div><div class="dpad-btn" id="p1down">▼</div><div class="dpad-blank"></div>
+      </div>
+      <button class="atk-btn atk-p1" id="p1atk">ATK</button>
+    </div>
+    <div class="touch-side">
+      <div class="dpad">
+        <div class="dpad-blank"></div><div class="dpad-btn" id="p2up">▲</div><div class="dpad-blank"></div>
+        <div class="dpad-btn" id="p2left">◄</div><div class="dpad-blank"></div><div class="dpad-btn" id="p2right">►</div>
+        <div class="dpad-blank"></div><div class="dpad-btn" id="p2down">▼</div><div class="dpad-blank"></div>
+      </div>
+      <button class="atk-btn atk-p2" id="p2atk">ATK</button>
+    </div>
+  </div>
+</div>
+
+<!-- TASK OVERLAY -->
+<div id="taskOverlay">
+  <div class="task-header">⚡ BUG DETECTED — RACE TO DEBUG ⚡</div>
+  <div class="task-title" id="taskTitle">NULL POINTER EXCEPTION</div>
+  <div class="task-timer-bar-wrap">
+    <div class="task-timer-bar" id="taskTimerBar" style="width:100%"></div>
+  </div>
+  <div class="task-box">
+    <div class="task-bug-type" id="taskBugType">RUNTIME ERROR</div>
+    <div class="task-code" id="taskCode"></div>
+    <div class="task-question" id="taskQuestion"></div>
+    <div class="task-options" id="taskOptions"></div>
+    <div class="task-reward-hint">
+      <span>✅ Correct First → <strong style="color:var(--p1)">+25 HP</strong> & opponent <strong style="color:var(--p2)">-15 HP</strong></span>
+      <span>❌ Wrong → <strong style="color:var(--p2)">-10 HP</strong></span>
+    </div>
+    <div class="task-footer">
+      <span>P1: keys 1 2 3 4 &nbsp;|&nbsp; P2: keys 7 8 9 0</span>
+      <span id="taskTimerText">15s</span>
+    </div>
+  </div>
+</div>
+
+<!-- TASK RESULT FLASH -->
+<div id="taskResult"></div>
+
+<!-- WIN SCREEN -->
+<div class="screen" id="winScreen">
+  <div class="win-title" id="winTitle">PLAYER 1 WINS</div>
+  <div class="win-sub">PROCESS TERMINATED</div>
+  <div class="win-btns">
+    <button class="btn-outline" onclick="startGame()">REMATCH</button>
+    <button class="btn-outline" onclick="showTitle()">MAIN MENU</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// PARTICLES
+// ============================================================
+(function spawnParticles(){
+  const c = document.getElementById('particles');
+  for(let i=0;i<20;i++){
+    const p = document.createElement('div');
+    p.className='particle';
+    p.style.left = Math.random()*100+'vw';
+    p.style.animationDuration = (8+Math.random()*12)+'s';
+    p.style.animationDelay = (-Math.random()*20)+'s';
+    p.style.width = p.style.height = (1+Math.random()*2)+'px';
+    p.style.background = Math.random()>0.5?'#00ffb4':'#ff4d6d';
+    p.style.opacity = '0';
+    c.appendChild(p);
+  }
+})();
+
+// ============================================================
+// TASKS DATABASE
+// ============================================================
+const TASKS = [
+  {
+    title: "NULL POINTER EXCEPTION",
+    bugType: "RUNTIME ERROR",
+    code: `<span class="code-kw">function</span> <span class="code-fn">greet</span>(user) {
+  console.<span class="code-fn">log</span>(user.name);  <span class="code-cmt">// line 2</span>
+}
+<span class="code-fn">greet</span>(<span class="code-kw">null</span>);  <span class="code-line-bug">// ← called here</span>`,
+    question: "Why does this crash at runtime?",
+    options: ["Missing semicolon after log", "null has no .name property", "Wrong function name 'greet'", "console.log takes 2 args"],
+    correct: 1
+  },
+  {
+    title: "OFF-BY-ONE ERROR",
+    bugType: "LOGIC BUG",
+    code: `<span class="code-kw">let</span> arr = [<span class="code-num">1</span>,<span class="code-num">2</span>,<span class="code-num">3</span>,<span class="code-num">4</span>,<span class="code-num">5</span>];
+<span class="code-kw">for</span>(<span class="code-kw">let</span> i=<span class="code-num">0</span>; <span class="code-line-bug">i<=arr.length</span>; i++){
+  console.<span class="code-fn">log</span>(arr[i]);
+}`,
+    question: "What causes the bug here?",
+    options: ["Array starts at index 1", "i<=arr.length reads undefined", "Missing break statement", "arr.length returns wrong value"],
+    correct: 1
+  },
+  {
+    title: "ASSIGNMENT IN CONDITION",
+    bugType: "LOGIC BUG",
+    code: `<span class="code-kw">let</span> x = <span class="code-num">10</span>;
+<span class="code-kw">if</span>(<span class="code-line-bug">x = 5</span>) {
+  console.<span class="code-fn">log</span>(<span class="code-str">"five!"</span>);
+}
+<span class="code-cmt">// Always runs even when x is 10</span>`,
+    question: "What's wrong with the condition?",
+    options: ["x should be declared with const", "= assigns 5 instead of comparing", "Missing curly braces", "console.log is spelled wrong"],
+    correct: 1
+  },
+  {
+    title: "INFINITE LOOP",
+    bugType: "RUNTIME HANG",
+    code: `<span class="code-kw">let</span> i = <span class="code-num">0</span>;
+<span class="code-kw">while</span>(i < <span class="code-num">10</span>) {
+  console.<span class="code-fn">log</span>(i);
+  <span class="code-line-bug">// i never changes!</span>
+}
+<span class="code-cmt">// Program freezes here</span>`,
+    question: "Why does this loop run forever?",
+    options: ["while condition is wrong", "i is never incremented", "console.log blocks execution", "Missing return statement"],
+    correct: 1
+  },
+  {
+    title: "WRONG RETURN TYPE",
+    bugType: "TYPE ERROR",
+    code: `<span class="code-kw">function</span> <span class="code-fn">add</span>(a, b) {
+  <span class="code-line-bug">return a + <span class="code-str">" "</span> + b;</span>
+}
+<span class="code-kw">let</span> result = <span class="code-fn">add</span>(<span class="code-num">5</span>, <span class="code-num">3</span>);
+console.<span class="code-fn">log</span>(result * <span class="code-num">2</span>); <span class="code-cmt">// NaN</span>`,
+    question: "Why is result * 2 equal to NaN?",
+    options: ["add() is not defined properly", "Returns string '5 3' not number 8", "Multiplication needs parseInt", "result is undefined"],
+    correct: 1
+  },
+  {
+    title: "ASYNC RACE CONDITION",
+    bugType: "ASYNC BUG",
+    code: `<span class="code-kw">let</span> data = <span class="code-kw">null</span>;
+<span class="code-fn">fetchData</span>().then(res => { data = res; });
+<span class="code-line-bug">console.<span class="code-fn">log</span>(data.value);</span> <span class="code-cmt">// crashes!</span>`,
+    question: "What is the root cause of this crash?",
+    options: ["fetchData is spelled wrong", "data is read before promise resolves", "then() needs two arguments", "Missing async keyword on outer scope"],
+    correct: 1
+  },
+  {
+    title: "SCOPE CONFUSION",
+    bugType: "SCOPE ERROR",
+    code: `<span class="code-kw">function</span> <span class="code-fn">counter</span>() {
+  <span class="code-kw">var</span> count = <span class="code-num">0</span>;
+  count++;
+}
+<span class="code-fn">counter</span>();
+<span class="code-fn">counter</span>();
+<span class="code-line-bug">console.<span class="code-fn">log</span>(count); <span class="code-cmt">// ReferenceError</span></span>`,
+    question: "Why is 'count' not accessible outside?",
+    options: ["count was not incremented enough", "var count is scoped inside the function", "counter() needs to return count", "Both B and C are correct"],
+    correct: 3
+  },
+  {
+    title: "MISSING BREAK",
+    bugType: "LOGIC BUG",
+    code: `<span class="code-kw">switch</span>(day) {
+  <span class="code-kw">case</span> <span class="code-str">"Mon"</span>: console.<span class="code-fn">log</span>(<span class="code-str">"Monday"</span>);
+  <span class="code-line-bug">// no break!</span>
+  <span class="code-kw">case</span> <span class="code-str">"Tue"</span>: console.<span class="code-fn">log</span>(<span class="code-str">"Tuesday"</span>);
+  <span class="code-kw">break</span>;
+}`,
+    question: "What happens when day is 'Mon'?",
+    options: ["Only 'Monday' is printed", "Both 'Monday' and 'Tuesday' print (fall-through)", "Error: no break in case", "switch won't compile"],
+    correct: 1
+  },
+  {
+    title: "ARRAY MUTATION BUG",
+    bugType: "REFERENCE ERROR",
+    code: `<span class="code-kw">const</span> a = [<span class="code-num">1</span>, <span class="code-num">2</span>, <span class="code-num">3</span>];
+<span class="code-kw">const</span> b = a; <span class="code-cmt">// copy?</span>
+b.<span class="code-fn">push</span>(<span class="code-num">4</span>);
+<span class="code-line-bug">console.<span class="code-fn">log</span>(a); <span class="code-cmt">// [1,2,3,4]!</span></span>`,
+    question: "Why does 'a' also change when we modify 'b'?",
+    options: ["push() is a mutating method", "b = a copies reference not value", "const prevents value change not mutation", "Both B and C are correct"],
+    correct: 3
+  },
+  {
+    title: "COMPARISON COERCION",
+    bugType: "TYPE COERCION",
+    code: `console.<span class="code-fn">log</span>(<span class="code-num">0</span> == <span class="code-str">""</span>);   <span class="code-cmt">// true</span>
+console.<span class="code-fn">log</span>(<span class="code-num">0</span> == <span class="code-kw">false</span>); <span class="code-cmt">// true</span>
+<span class="code-line-bug">console.<span class="code-fn">log</span>(<span class="code-str">""</span> == <span class="code-kw">false</span>);  <span class="code-cmt">// true?</span></span>
+<span class="code-cmt">// All three are equal but "" !== false</span>`,
+    question: "How do you fix these unexpected comparisons?",
+    options: ["Use parseInt() before comparing", "Use === (strict equality) instead of ==", "Add typeof checks everywhere", "Wrap in Boolean() first"],
+    correct: 1
+  },
+  {
+    title: "CLOSURE TRAP",
+    bugType: "CLOSURE BUG",
+    code: `<span class="code-kw">for</span>(<span class="code-kw">var</span> i=<span class="code-num">0</span>; i<<span class="code-num">3</span>; i++){
+  <span class="code-fn">setTimeout</span>(()=>{
+    <span class="code-line-bug">console.<span class="code-fn">log</span>(i); <span class="code-cmt">// prints 3,3,3</span></span>
+  }, <span class="code-num">100</span>);
+}`,
+    question: "Why does it print 3,3,3 instead of 0,1,2?",
+    options: ["setTimeout is too slow", "var i is shared across all callbacks (closure)", "Arrow functions can't access i", "Loop ends before setTimeout fires"],
+    correct: 1
+  },
+  {
+    title: "STACK OVERFLOW",
+    bugType: "RECURSION BUG",
+    code: `<span class="code-kw">function</span> <span class="code-fn">factorial</span>(n) {
+  <span class="code-line-bug">return n * <span class="code-fn">factorial</span>(n-<span class="code-num">1</span>);</span>
+  <span class="code-cmt">// never stops!</span>
+}
+<span class="code-fn">factorial</span>(<span class="code-num">5</span>);`,
+    question: "What's missing that causes infinite recursion?",
+    options: ["return keyword is wrong", "Base case: if(n<=1) return 1 is missing", "factorial should use a loop", "n-1 should be n+1"],
+    correct: 1
+  }
+];
+
+// ============================================================
+// GAME ENGINE
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize(){
+  const container = document.querySelector('.canvas-container');
+  const maxW = Math.min(container.clientWidth, 900);
+  const maxH = container.clientHeight;
+  W = canvas.width = maxW;
+  H = canvas.height = maxH;
+}
+
+let keys = {};
+let gameLoop = null;
+let scores = [0,0];
+let debugMessages = [
+  '> RUNTIME ACTIVE...',
+  '> NULL POINTER EXCEPTION',
+  '> SEGMENTATION FAULT',
+  '> MEMORY LEAK: 420KB',
+  '> KERNEL PANIC',
+  '> BUG INJECTED INTO ARENA',
+  '> DEBUG MODE: ON',
+  '> ERROR_CODE: 0xDEAD',
+  '> TASK INCOMING...',
+  '> STACK TRACE AVAILABLE',
+];
+
+const PLAYER_R = 22;
+const SPEED = 3.5;
+const ATTACK_CD = 700;
+const ATTACK_DMG = 14;
+const PROJ_SPEED = 7;
+const MAX_HP = 100;
+
+let players, projectiles, particles_game, debugLog_timer;
+
+// ============================================================
+// TASK SYSTEM
+// ============================================================
+let taskState = {
+  active: false,
+  current: null,
+  timer: 15,
+  interval: null,
+  timerInterval: null,
+  answered: [false, false], // P1, P2 answered?
+  schedulerInterval: null,
+  usedIndices: []
+};
+
+const TASK_DURATION = 15; // seconds
+const TASK_SPAWN_INTERVAL = 18000; // ms between tasks
+
+function getNextTask() {
+  if(taskState.usedIndices.length >= TASKS.length) taskState.usedIndices = [];
+  let idx;
+  do { idx = Math.floor(Math.random() * TASKS.length); }
+  while(taskState.usedIndices.includes(idx));
+  taskState.usedIndices.push(idx);
+  return { ...TASKS[idx] };
+}
+
+function showTask() {
+  if(taskState.active) return;
+  const task = getNextTask();
+  taskState.active = true;
+  taskState.current = task;
+  taskState.timer = TASK_DURATION;
+  taskState.answered = [false, false];
+
+  // Populate UI
+  document.getElementById('taskTitle').textContent = task.title;
+  document.getElementById('taskBugType').textContent = task.bugType;
+  document.getElementById('taskCode').innerHTML = task.code;
+  document.getElementById('taskQuestion').textContent = task.question;
+
+  const optContainer = document.getElementById('taskOptions');
+  optContainer.innerHTML = '';
+  const labels = ['A','B','C','D'];
+  task.options.forEach((opt, i) => {
+    const div = document.createElement('div');
+    div.className = 'task-opt';
+    div.id = `opt_${i}`;
+    div.innerHTML = `
+      <span class="opt-key p1-key">${i+1}</span>
+      <span class="opt-key p2-key">${[7,8,9,0][i]}</span>
+      <span><strong style="color:var(--accent)">${labels[i]}.</strong> ${opt}</span>`;
+    optContainer.appendChild(div);
+  });
+
+  // Timer bar
+  document.getElementById('taskTimerBar').style.width = '100%';
+  document.getElementById('taskTimerBar').style.background = 'linear-gradient(90deg, var(--p1), var(--accent))';
+  document.getElementById('taskTimerText').textContent = TASK_DURATION + 's';
+
+  // Highlight correct option subtly
+  setTimeout(() => {
+    const correctEl = document.getElementById(`opt_${task.correct}`);
+    if(correctEl) correctEl.classList.add('highlight');
+  }, 8000); // hint after 8s
+
+  document.getElementById('taskOverlay').classList.add('active');
+
+  // Countdown
+  let elapsed = 0;
+  taskState.timerInterval = setInterval(() => {
+    elapsed += 0.1;
+    const remaining = Math.max(0, TASK_DURATION - elapsed);
+    const pct = (remaining / TASK_DURATION) * 100;
+    document.getElementById('taskTimerBar').style.width = pct + '%';
+    document.getElementById('taskTimerText').textContent = Math.ceil(remaining) + 's';
+
+    // Color change when low
+    if(remaining < 5) {
+      document.getElementById('taskTimerBar').style.background = 'linear-gradient(90deg, var(--p2), #ff8800)';
+    }
+
+    if(remaining <= 0) {
+      clearInterval(taskState.timerInterval);
+      onTaskTimeout();
+    }
+  }, 100);
+}
+
+function onTaskAnswer(playerIndex, optionIndex) {
+  if(!taskState.active) return;
+  if(taskState.answered[playerIndex]) return; // already answered
+
+  taskState.answered[playerIndex] = true;
+  const correct = taskState.current.correct;
+  const optEl = document.getElementById(`opt_${optionIndex}`);
+
+  if(optionIndex === correct) {
+    // Correct!
+    if(optEl) { optEl.classList.add('correct-anim'); }
+    clearInterval(taskState.timerInterval);
+
+    // Reward
+    const me = players[playerIndex];
+    const them = players[1 - playerIndex];
+    me.hp = Math.min(MAX_HP, me.hp + 25);
+    them.hp = Math.max(0, them.hp - 15);
+    updateHUD();
+
+    showTaskResult(`P${playerIndex+1} DEBUGGED! +25 HP`, 'win');
+    document.getElementById('debugLog').textContent = `> TASK SOLVED BY DEBUGGER_0${playerIndex+1} — SYSTEM PATCHED`;
+
+    // Check death
+    if(them.hp <= 0) {
+      them.dead = true;
+      setTimeout(()=>endRound(), 800);
+    }
+
+    setTimeout(hideTask, 1200);
+  } else {
+    // Wrong
+    if(optEl) { optEl.classList.add('wrong-anim'); }
+    players[playerIndex].hp = Math.max(0, players[playerIndex].hp - 10);
+    updateHUD();
+    taskState.answered[playerIndex] = false; // allow retry
+    showTaskResult('WRONG ANSWER! -10 HP', 'lose');
+
+    if(players[playerIndex].hp <= 0) {
+      players[playerIndex].dead = true;
+      clearInterval(taskState.timerInterval);
+      hideTask();
+      setTimeout(()=>endRound(), 800);
+    }
+  }
+}
+
+function onTaskTimeout() {
+  // Both lose HP
+  players[0].hp = Math.max(0, players[0].hp - 8);
+  players[1].hp = Math.max(0, players[1].hp - 8);
+  updateHUD();
+  document.getElementById('debugLog').textContent = '> TASK TIMEOUT — ALL DEBUGGERS PENALIZED';
+  showTaskResult('TIME UP! -8 HP EACH', 'timeout');
+
+  // Check deaths
+  let anyDead = false;
+  players.forEach(p => { if(p.hp <= 0) { p.dead = true; anyDead = true; } });
+  if(anyDead) {
+    setTimeout(()=>{ hideTask(); endRound(); }, 1200);
+  } else {
+    setTimeout(hideTask, 1200);
+  }
+}
+
+function hideTask() {
+  taskState.active = false;
+  document.getElementById('taskOverlay').classList.remove('active');
+}
+
+function showTaskResult(msg, type) {
+  const el = document.getElementById('taskResult');
+  el.textContent = msg;
+  el.className = `active ${type}`;
+  el.style.display = 'flex';
+  setTimeout(() => {
+    el.style.display = 'none';
+    el.className = '';
+  }, 900);
+}
+
+// Task keyboard handlers (separate from game keys)
+const TASK_P1_KEYS = { 'Digit1': 0, 'Digit2': 1, 'Digit3': 2, 'Digit4': 3 };
+const TASK_P2_KEYS = { 'Digit7': 0, 'Digit8': 1, 'Digit9': 2, 'Digit0': 3 };
+
+// ============================================================
+// GAME FUNCTIONS
+// ============================================================
+function initPlayers(){
+  players = [
+    { x: W*0.25, y: H*0.5, vx:0, vy:0, hp: MAX_HP, color: '#00ffb4', glow: 'rgba(0,255,180,', lastAtk: 0, dead: false, trail: [], num: 1, facing: 1 },
+    { x: W*0.75, y: H*0.5, vx:0, vy:0, hp: MAX_HP, color: '#ff4d6d', glow: 'rgba(255,77,109,', lastAtk: 0, dead: false, trail: [], num: 2, facing: -1 }
+  ];
+  projectiles = [];
+  particles_game = [];
+}
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showTitle(){
+  clearInterval(gameLoop);
+  clearInterval(taskState.schedulerInterval);
+  clearInterval(taskState.timerInterval);
+  hideTask();
+  showScreen('titleScreen');
+}
+
+function startGame(){
+  resize();
+  showScreen('gameScreen');
+  initPlayers();
+  scores = [0,0];
+  document.getElementById('scoreDisplay').textContent = '0 — 0';
+  updateHUD();
+  if(gameLoop) clearInterval(gameLoop);
+  gameLoop = setInterval(tick, 16);
+  rotateDebugLog();
+
+  // Start task scheduler
+  clearInterval(taskState.schedulerInterval);
+  taskState.usedIndices = [];
+  taskState.schedulerInterval = setInterval(() => {
+    if(!taskState.active && gameLoop) showTask();
+  }, TASK_SPAWN_INTERVAL);
+
+  // First task after 10s
+  setTimeout(() => {
+    if(!taskState.active && gameLoop) showTask();
+  }, 10000);
+}
+
+function rotateDebugLog(){
+  clearInterval(debugLog_timer);
+  debugLog_timer = setInterval(()=>{
+    if(taskState.active) return;
+    const msg = debugMessages[Math.floor(Math.random()*debugMessages.length)];
+    document.getElementById('debugLog').textContent = msg;
+  }, 2000);
+}
+
+// Controls
+document.addEventListener('keydown', e=>{
+  keys[e.code]=true;
+  if(e.key==='ArrowUp'||e.key==='ArrowDown') e.preventDefault();
+
+  // Task answers
+  if(taskState.active) {
+    if(TASK_P1_KEYS[e.code] !== undefined) {
+      onTaskAnswer(0, TASK_P1_KEYS[e.code]);
+    }
+    if(TASK_P2_KEYS[e.code] !== undefined) {
+      onTaskAnswer(1, TASK_P2_KEYS[e.code]);
+    }
+  }
+});
+document.addEventListener('keyup', e=>{ keys[e.code]=false; });
+
+function handleInput(){
+  if(taskState.active) return; // freeze movement during task
+  const p1 = players[0], p2 = players[1];
+  const now = Date.now();
+  if(!p1.dead){
+    p1.vx = p1.vy = 0;
+    if(keys['KeyA']){ p1.vx=-SPEED; p1.facing=-1; }
+    if(keys['KeyD']){ p1.vx= SPEED; p1.facing= 1; }
+    if(keys['KeyW']){ p1.vy=-SPEED; }
+    if(keys['KeyS']){ p1.vy= SPEED; }
+    if(keys['KeyF'] && now - p1.lastAtk > ATTACK_CD){ p1.lastAtk = now; fireProjectile(p1, p2); }
+  }
+  if(!p2.dead){
+    p2.vx = p2.vy = 0;
+    if(keys['ArrowLeft']){ p2.vx=-SPEED; p2.facing=-1; }
+    if(keys['ArrowRight']){ p2.vx= SPEED; p2.facing= 1; }
+    if(keys['ArrowUp']){ p2.vy=-SPEED; }
+    if(keys['ArrowDown']){ p2.vy= SPEED; }
+    if(keys['KeyL'] && now - p2.lastAtk > ATTACK_CD){ p2.lastAtk = now; fireProjectile(p2, p1); }
+  }
+}
+
+function fireProjectile(shooter, target){
+  const dx = target.x - shooter.x;
+  const dy = target.y - shooter.y;
+  const dist = Math.sqrt(dx*dx+dy*dy)||1;
+  projectiles.push({
+    x: shooter.x, y: shooter.y,
+    vx: (dx/dist)*PROJ_SPEED, vy: (dy/dist)*PROJ_SPEED,
+    owner: shooter.num, color: shooter.color, glow: shooter.glow,
+    r: 5, life: 120,
+  });
+  for(let i=0;i<8;i++) spawnParticleGame(shooter.x, shooter.y, shooter.color);
+}
+
+function spawnParticleGame(x,y,color,vscale=1){
+  particles_game.push({
+    x,y,
+    vx: (Math.random()-0.5)*4*vscale, vy: (Math.random()-0.5)*4*vscale,
+    life: 30+Math.random()*20, maxLife: 50,
+    color, r: 2+Math.random()*3,
+  });
+}
+
+function updatePhysics(){
+  players.forEach(p=>{
+    if(p.dead) return;
+    p.trail.push({x:p.x, y:p.y});
+    if(p.trail.length>8) p.trail.shift();
+    p.x += p.vx; p.y += p.vy;
+    p.x = Math.max(PLAYER_R, Math.min(W-PLAYER_R, p.x));
+    p.y = Math.max(PLAYER_R, Math.min(H-PLAYER_R, p.y));
+  });
+
+  projectiles = projectiles.filter(pr=>{
+    pr.x += pr.vx; pr.y += pr.vy; pr.life--;
+    if(pr.life<=0||pr.x<0||pr.x>W||pr.y<0||pr.y>H) return false;
+    const target = players.find(p=> p.num !== pr.owner && !p.dead);
+    if(target){
+      const dx = pr.x - target.x, dy = pr.y - target.y;
+      if(Math.sqrt(dx*dx+dy*dy) < PLAYER_R + pr.r){
+        target.hp = Math.max(0, target.hp - ATTACK_DMG);
+        for(let i=0;i<12;i++) spawnParticleGame(pr.x, pr.y, pr.color, 1.5);
+        updateHUD();
+        if(target.hp<=0){ target.dead=true; setTimeout(()=>endRound(), 800); }
+        return false;
+      }
+    }
+    return true;
+  });
+
+  particles_game = particles_game.filter(p=>{
+    p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life--;
+    return p.life>0;
+  });
+}
+
+function endRound(){
+  clearInterval(taskState.timerInterval);
+  hideTask();
+  const winner = players.find(p=>!p.dead);
+  if(winner) scores[winner.num-1]++;
+  document.getElementById('scoreDisplay').textContent = `${scores[0]} — ${scores[1]}`;
+  if(scores[0]>=3 || scores[1]>=3){
+    clearInterval(gameLoop); gameLoop = null;
+    clearInterval(taskState.schedulerInterval);
+    clearInterval(debugLog_timer);
+    const w = scores[0]>=3?1:2;
+    const wt = document.getElementById('winTitle');
+    wt.textContent = `PLAYER ${w} WINS`;
+    wt.className = 'win-title '+(w===1?'p1win':'p2win');
+    showScreen('winScreen');
+  } else {
+    initPlayers();
+    updateHUD();
+  }
+}
+
+function updateHUD(){
+  const p1 = players[0], p2 = players[1];
+  document.getElementById('hp1bar').style.width = p1.hp+'%';
+  document.getElementById('hp2bar').style.width = p2.hp+'%';
+  document.getElementById('hp1text').textContent = p1.hp;
+  document.getElementById('hp2text').textContent = p2.hp;
+  document.getElementById('scoreDisplay').textContent = `${scores[0]} — ${scores[1]}`;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle = 'rgba(0,255,180,0.04)'; ctx.lineWidth = 1;
+  const gs = 50;
+  for(let x=0;x<W;x+=gs){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=0;y<H;y+=gs){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.setLineDash([10,10]);
+  ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+  ctx.setLineDash([]);
+
+  particles_game.forEach(p=>{
+    ctx.globalAlpha = p.life/p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r*(p.life/p.maxLife), 0, Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  projectiles.forEach(pr=>{
+    ctx.globalAlpha = Math.min(1, pr.life/20);
+    ctx.shadowColor = pr.color; ctx.shadowBlur = 15;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  });
+
+  players.forEach(p=>{
+    p.trail.forEach((t,i)=>{
+      ctx.globalAlpha = (i/p.trail.length)*0.3;
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(t.x, t.y, PLAYER_R*(i/p.trail.length), 0, Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    if(p.dead) return;
+    ctx.shadowColor = p.color; ctx.shadowBlur = 20;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(10,20,30,0.9)';
+    ctx.beginPath(); ctx.ellipse(p.x+p.facing*5, p.y-5, 10, 7, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath(); ctx.ellipse(p.x+p.facing*4, p.y-7, 4, 2.5, -0.3, 0, Math.PI*2); ctx.fill();
+    const hpFrac = p.hp/MAX_HP;
+    ctx.strokeStyle = p.color; ctx.lineWidth = 2; ctx.globalAlpha = 0.4;
+    ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R+6, -Math.PI/2, -Math.PI/2 + Math.PI*2*hpFrac); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.lineWidth = 1;
+  });
+  ctx.shadowBlur = 0;
+}
+
+function tick(){
+  handleInput();
+  updatePhysics();
+  render();
+}
+
+window.addEventListener('resize', ()=>{ if(gameLoop){ resize(); } });
+
+// ============================================================
+// TOUCH CONTROLS
+// ============================================================
+function setupTouch(){
+  const map = {
+    'p1up':'KeyW','p1down':'KeyS','p1left':'KeyA','p1right':'KeyD','p1atk':'KeyF',
+    'p2up':'ArrowUp','p2down':'ArrowDown','p2left':'ArrowLeft','p2right':'ArrowRight','p2atk':'KeyL',
+  };
+  Object.entries(map).forEach(([id, code]) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const press = (e) => { e.preventDefault(); keys[code]=true; el.classList.add('pressed'); };
+    const release = (e) => { e.preventDefault(); keys[code]=false; el.classList.remove('pressed'); };
+    el.addEventListener('touchstart', press, {passive:false});
+    el.addEventListener('touchend', release, {passive:false});
+    el.addEventListener('touchcancel', release, {passive:false});
+    el.addEventListener('mousedown', press);
+    el.addEventListener('mouseup', release);
+    el.addEventListener('mouseleave', release);
+  });
+}
+setupTouch();
+
+function mobileResize(){
+  const isMobile = window.innerWidth < 768;
+  if(isMobile){
+    const hud = document.querySelector('.hud');
+    const dbg = document.querySelector('.debug-log');
+    const touch = document.getElementById('touchUI');
+    const hudH = hud ? hud.offsetHeight : 60;
+    const dbgH = dbg ? dbg.offsetHeight : 28;
+    const touchH = touch ? touch.offsetHeight : 180;
+    const avail = window.innerHeight - hudH - dbgH - touchH;
+    const cc = document.querySelector('.canvas-container');
+    if(cc) cc.style.height = avail + 'px';
+  }
+}
+mobileResize();
+window.addEventListener('resize', mobileResize);
+</script>
+</body>
+</html>
